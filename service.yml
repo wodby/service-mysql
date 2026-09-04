@@ -1,61 +1,219 @@
-name: example-service
-type: service
-icon: service
-title: Example Service
-update: manual
-scalable: true
-
-labels:
-- example
-- web
+name: mysql
+icon: mysql
+type: db
+title: MySQL
+scalable: false
 
 options:
-- version: '1.0'
-  tag: '1.29'
+- version: '8'
+  tag: '8.0.44'
   default: true
 
 endpoints:
-- name: http
-  main: true
+- name: mysql
   ports:
-  - name: http
-    number: 80
-    protocol: http
-    main: true
+  - name: mysql
+    number: 3306
+    protocol: tcp
+
+labels:
+- mysql
+
+volumes:
+- name: data
+  title: Data
+  size: 10
+  helm:
+    labels: persistence.labels
+    values:
+    - name: persistence.enabled
+      value: true
+    - name: persistence.size
+      value: '{{volumes.data.size}}Gi'
+    - name: persistence.storageClass
+      value: '{{volumes.data.storageClassName}}'
+    - name: persistence.existingClaim
+      value: '{{volumes.data.claim}}'
+
+imports:
+- name: database
+  title: Database import
+  volume: data
+  init:
+    mount: /docker-entrypoint-initdb.d
+    env:
+    - name: MYSQL_DATABASE
+      value: '{{database.db.name}}'
+  extensions:
+  - sql
+  - gz
+  - tar.gz
+  - tgz
+  - zip
+
+database:
+  type: mysql
+  kind: mysql
+  port: 3306
+  ssl: true
+  root:
+    username: root
+    password: '{{root_password}}'
+  db:
+    name: '{{app.name}}_{{instance.name}}'
+    charset: utf8mb4
+    collation: utf8mb4_0900_ai_ci
+    actions:
+      create:
+        args:
+        - mysql
+        - '--host={{database.host}}'
+        - --user=root
+        - '--password={{root_password}}'
+        - '--execute=CREATE DATABASE IF NOT EXISTS {{database.db.name}} CHARACTER SET {{database.db.charset}} COLLATE {{database.db.collation}};'
+      drop:
+        args:
+        - mysql
+        - '--host={{database.host}}'
+        - --user=root
+        - '--password={{root_password}}'
+        - '--execute=DROP DATABASE IF EXISTS {{database.db.name}};'
+  user:
+    name: '{{app.name}}_{{instance.name}}'
+    password: '{{password}}'
+    actions:
+      create:
+        args:
+        - mysql
+        - '--host={{database.host}}'
+        - --user=root
+        - '--password={{root_password}}'
+        - "--execute=CREATE USER IF NOT EXISTS '{{database.user.name}}'@'%' IDENTIFIED BY '{{database.user.password}}'; ALTER USER '{{database.user.name}}'@'%' IDENTIFIED BY '{{database.user.password}}';"
+      drop:
+        args:
+        - mysql
+        - '--host={{database.host}}'
+        - --user=root
+        - '--password={{root_password}}'
+        - "--execute=DROP USER IF EXISTS '{{database.user.name}}'@'%';"
+      grant:
+        args:
+        - mysql
+        - '--host={{database.host}}'
+        - --user=root
+        - '--password={{root_password}}'
+        - "--execute=GRANT ALL PRIVILEGES ON {{database.db.name}}.* TO '{{database.user.name}}'@'%';"
+      revoke:
+        args:
+        - mysql
+        - '--host={{database.host}}'
+        - --user=root
+        - '--password={{root_password}}'
+        - "--execute=REVOKE ALL PRIVILEGES ON {{database.db.name}}.* FROM '{{database.user.name}}'@'%';"
+  charsets:
+  - name: utf8mb4
+    title: 4-Byte UTF-8 Unicode
+    collation: utf8mb4_0900_ai_ci
+    default: true
+
+backups:
+- name: database
+  title: Default database backup
+  create:
+    args:
+    - mysqldump
+    - '--host={{database.host}}'
+    - --user=root
+    - '--password={{root_password}}'
+    - --single-transaction
+    - --routines
+    - --triggers
+    - '--result-file=/var/lib/mysql/backup.sql'
+    - '{{database.db.name}}'
+  upload:
+    filepath: /var/lib/mysql/backup.sql
+    extension: sql
+
+tokens:
+- name: root_password
+  generate:
+    regex: '[0-9a-z-]{32}'
+- name: password
+  generate:
+    regex: '[0-9a-z-]{32}'
 
 env:
-- name: NGINX_VHOST_PRESET
-  value: html
-- name: NGINX_SERVER_ROOT
-  value: /var/www/html
-
-build:
-  dockerfile: Dockerfile
-  dockerignore: .dockerignore
-  connect: true
+- name: MYSQL_ROOT_PASSWORD
+  value: '{{root_password}}'
+- name: MYSQL_ROOT_HOST
+  value: '%'
 
 helm:
   name: wodby
-  source: oci://registry-1.docker.io/wodby/nginx
-  chart: oci://registry-1.docker.io/wodby/nginx
+  source: oci://registry-1.docker.io/wodby/stateful
+  chart: oci://registry-1.docker.io/wodby/stateful
   version: 0.2.0
+  valueMappings:
+    replicas: replicaCount
+    fullnameOverride: fullnameOverride
+    serviceAccountName: serviceAccount.name
+    serviceAccountCreate: serviceAccount.create
+    strategy: updateStrategy
+    minReady: minReadySeconds
+    shutdownGracePeriod: terminationGracePeriodSeconds
+  values:
+  - name: containerName
+    value: mysql
+  - name: containerPorts
+    value:
+    - name: mysql
+      containerPort: 3306
+      protocol: TCP
+  - name: service.ports
+    value:
+    - name: mysql
+      port: 3306
+      targetPort: mysql
+      protocol: TCP
+  - name: headlessService.enabled
+    value: false
+  - name: persistence.mountPath
+    value: /var/lib/mysql
+  - name: serviceAccount.automount
+    value: false
+  - name: startupProbe
+    value:
+      tcpSocket:
+        port: mysql
+      failureThreshold: 60
+      periodSeconds: 5
+  - name: readinessProbe
+    value:
+      tcpSocket:
+        port: mysql
+      periodSeconds: 10
+  - name: livenessProbe
+    value:
+      tcpSocket:
+        port: mysql
+      initialDelaySeconds: 30
+      periodSeconds: 10
 
 workloads:
 - name: main
   selector:
     matchLabels:
       app.kubernetes.io/instance: '{{helm.release}}'
-  kind: deployment
+  kind: statefulset
   primary: true
   helm:
-    labels: commonLabels
-    annotations: commonAnnotations
+    labels: podLabels
+    annotations: podAnnotations
     volumes: extraVolumes
   containers:
-  - name: nginx
-    image: wodby/nginx
-    build: true
+  - name: mysql
+    image: mysql
     helm:
       resources: resources
-      env: extraEnvVars
+      env: envVars
       mounts: extraVolumeMounts
