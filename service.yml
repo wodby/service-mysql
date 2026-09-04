@@ -6,9 +6,10 @@ scalable: false
 
 options:
 - version: '8'
-  tag: '8.0-1.0.0'
+  tag: '8-1.0.0'
   default: true
 
+  eol: '2032-04-30T00:00:00+00:00'
 endpoints:
 - name: mysql
   ports:
@@ -127,7 +128,8 @@ backups:
   options:
   - name: excluded_tables
     title: Excluded table contents
-    description: MySQL table names or SQL LIKE patterns whose definitions are retained while their rows are omitted.
+    description: MySQL table names or SQL LIKE patterns whose definitions are 
+      retained while their rows are omitted.
     type: table_list
     defaultToken: db_backup_ignore_tables
   create:
