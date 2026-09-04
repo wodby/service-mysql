@@ -1,61 +1,254 @@
-name: example-service
-type: service
-icon: service
-title: Example Service
-update: manual
-scalable: true
-
-labels:
-- example
-- web
+name: mysql
+icon: mysql
+type: db
+title: MySQL
+scalable: false
 
 options:
-- version: '1.0'
-  tag: '1.29'
+- version: '8'
+  tag: '8.0-1.0.0'
   default: true
 
 endpoints:
-- name: http
-  main: true
+- name: mysql
   ports:
-  - name: http
-    number: 80
-    protocol: http
-    main: true
+  - name: mysql
+    number: 3306
+    protocol: tcp
+
+labels:
+- mysql
+
+volumes:
+- name: data
+  title: Data
+  size: 10
+  helm:
+    labels: persistence.labels
+    values:
+    - name: persistence.enabled
+      value: true
+    - name: persistence.size
+      value: '{{volumes.data.size}}Gi'
+    - name: persistence.storageClass
+      value: '{{volumes.data.storageClassName}}'
+    - name: persistence.existingClaim
+      value: '{{volumes.data.claim}}'
+
+imports:
+- name: database
+  title: Database import
+  volume: data
+  init:
+    mount: /wodby/import
+    env:
+    - name: MYSQL_DATABASE
+      value: '{{database.db.name}}'
+    - name: MYSQL_USER
+      value: '{{database.user.name}}'
+    - name: MYSQL_PASSWORD
+      value: '{{database.user.password}}'
+      secret: true
+  extensions:
+  - sql
+  - mysql
+  - gz
+  - tar.gz
+  - tgz
+  - zip
+
+database:
+  type: mysql
+  kind: mysql
+  port: 3306
+  ssl: true
+  root:
+    username: root
+    password: '{{root_password}}'
+  db:
+    name: '{{app.name}}_{{instance.name}}'
+    charset: utf8mb4
+    collation: utf8mb4_0900_ai_ci
+    actions:
+      create:
+        args:
+        - make
+        - create-db
+        - 'name={{database.db.name}}'
+        - 'charset={{database.db.charset}}'
+        - 'collation={{database.db.collation}}'
+        - 'host={{database.host}}'
+      drop:
+        args:
+        - make
+        - drop-db
+        - 'name={{database.db.name}}'
+        - 'host={{database.host}}'
+  user:
+    name: '{{app.name}}_{{instance.name}}'
+    password: '{{password}}'
+    actions:
+      create:
+        args:
+        - make
+        - create-user
+        - 'username={{database.user.name}}'
+        - 'password={{database.user.password}}'
+        - 'host={{database.host}}'
+      drop:
+        args:
+        - make
+        - drop-user
+        - 'username={{database.user.name}}'
+        - 'host={{database.host}}'
+      grant:
+        args:
+        - make
+        - grant-user-db
+        - 'username={{database.user.name}}'
+        - 'db={{database.db.name}}'
+        - 'host={{database.host}}'
+      revoke:
+        args:
+        - make
+        - revoke-user-db
+        - 'username={{database.user.name}}'
+        - 'db={{database.db.name}}'
+        - 'host={{database.host}}'
+  charsets:
+  - name: utf8mb4
+    title: 4-Byte UTF-8 Unicode
+    collation: utf8mb4_0900_ai_ci
+    default: true
+
+backups:
+- name: database
+  title: Default database backup
+  options:
+  - name: excluded_tables
+    title: Excluded table contents
+    description: MySQL table names or SQL LIKE patterns whose definitions are retained while their rows are omitted.
+    type: table_list
+    defaultToken: db_backup_ignore_tables
+  create:
+    args:
+    - make
+    - backup
+    - 'host={{database.host}}'
+    - 'db={{database.db.name}}'
+    - 'ignore={{backup.options.excluded_tables}}'
+    - 'filepath=/var/lib/mysql/backup.sql.gz'
+  stream:
+    optionVersions:
+    - '8'
+    args:
+    - make
+    - backup-stream
+    - 'host={{database.host}}'
+    - 'db={{database.db.name}}'
+    - 'ignore={{backup.options.excluded_tables}}'
+    - 'stream_path=/var/run/wodby-backup/data'
+    - 'status_path=/var/run/wodby-backup/status'
+  upload:
+    filepath: /var/lib/mysql/backup.sql.gz
+    extension: sql.gz
+
+tokens:
+- name: root_password
+  generate:
+    regex: '[0-9a-z-]{32}'
+- name: password
+  generate:
+    regex: '[0-9a-z-]{32}'
+- name: db_backup_ignore_tables
+  value: ''
 
 env:
-- name: NGINX_VHOST_PRESET
-  value: html
-- name: NGINX_SERVER_ROOT
-  value: /var/www/html
+- name: MYSQL_ROOT_PASSWORD
+  value: '{{root_password}}'
+- name: MYSQL_ROOT_HOST
+  value: '%'
 
-build:
-  dockerfile: Dockerfile
-  dockerignore: .dockerignore
-  connect: true
+deployment:
+  strategy: rolling
+  minReady: 10s
+  shutdownGracePeriod: 30s
 
 helm:
   name: wodby
-  source: oci://registry-1.docker.io/wodby/nginx
-  chart: oci://registry-1.docker.io/wodby/nginx
+  source: oci://registry-1.docker.io/wodby/stateful
+  chart: oci://registry-1.docker.io/wodby/stateful
   version: 0.2.0
+  valueMappings:
+    replicas: replicaCount
+    fullnameOverride: fullnameOverride
+    serviceAccountName: serviceAccount.name
+    serviceAccountCreate: serviceAccount.create
+    strategy: updateStrategy
+    minReady: minReadySeconds
+    shutdownGracePeriod: terminationGracePeriodSeconds
+  values:
+  - name: containerName
+    value: mysql
+  - name: containerPorts
+    value:
+    - name: mysql
+      containerPort: 3306
+      protocol: TCP
+  - name: service.ports
+    value:
+    - name: mysql
+      port: 3306
+      targetPort: mysql
+      protocol: TCP
+  - name: headlessService.enabled
+    value: false
+  - name: persistence.mountPath
+    value: /var/lib/mysql
+  - name: serviceAccount.automount
+    value: false
+  - name: startupProbe
+    value:
+      tcpSocket:
+        port: mysql
+      failureThreshold: 60
+      periodSeconds: 5
+  - name: readinessProbe
+    value:
+      tcpSocket:
+        port: mysql
+      periodSeconds: 10
+  - name: livenessProbe
+    value:
+      tcpSocket:
+        port: mysql
+      initialDelaySeconds: 30
+      periodSeconds: 10
 
 workloads:
 - name: main
   selector:
     matchLabels:
       app.kubernetes.io/instance: '{{helm.release}}'
-  kind: deployment
+  kind: statefulset
   primary: true
   helm:
-    labels: commonLabels
-    annotations: commonAnnotations
+    labels: podLabels
+    annotations: podAnnotations
     volumes: extraVolumes
   containers:
-  - name: nginx
-    image: wodby/nginx
-    build: true
+  - name: mysql
+    image: wodby/mysql
     helm:
       resources: resources
-      env: extraEnvVars
+      env: envVars
       mounts: extraVolumeMounts
+
+configs:
+- name: config
+  title: MySQL config
+  version: '8'
+  filepath: /etc/gotpl/my.cnf.tmpl
+  default:
+    source: image
+    filepath: /etc/gotpl/my.cnf.tmpl
