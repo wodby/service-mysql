@@ -6,7 +6,7 @@ scalable: false
 
 options:
 - version: '8'
-  tag: '8.0.44'
+  tag: '8.0-1.0.0'
   default: true
 
 endpoints:
@@ -40,12 +40,18 @@ imports:
   title: Database import
   volume: data
   init:
-    mount: /docker-entrypoint-initdb.d
+    mount: /wodby/import
     env:
     - name: MYSQL_DATABASE
       value: '{{database.db.name}}'
+    - name: MYSQL_USER
+      value: '{{database.user.name}}'
+    - name: MYSQL_PASSWORD
+      value: '{{database.user.password}}'
+      secret: true
   extensions:
   - sql
+  - mysql
   - gz
   - tar.gz
   - tgz
@@ -66,50 +72,49 @@ database:
     actions:
       create:
         args:
-        - mysql
-        - '--host={{database.host}}'
-        - --user=root
-        - '--password={{root_password}}'
-        - '--execute=CREATE DATABASE IF NOT EXISTS {{database.db.name}} CHARACTER SET {{database.db.charset}} COLLATE {{database.db.collation}};'
+        - make
+        - create-db
+        - 'name={{database.db.name}}'
+        - 'charset={{database.db.charset}}'
+        - 'collation={{database.db.collation}}'
+        - 'host={{database.host}}'
       drop:
         args:
-        - mysql
-        - '--host={{database.host}}'
-        - --user=root
-        - '--password={{root_password}}'
-        - '--execute=DROP DATABASE IF EXISTS {{database.db.name}};'
+        - make
+        - drop-db
+        - 'name={{database.db.name}}'
+        - 'host={{database.host}}'
   user:
     name: '{{app.name}}_{{instance.name}}'
     password: '{{password}}'
     actions:
       create:
         args:
-        - mysql
-        - '--host={{database.host}}'
-        - --user=root
-        - '--password={{root_password}}'
-        - "--execute=CREATE USER IF NOT EXISTS '{{database.user.name}}'@'%' IDENTIFIED BY '{{database.user.password}}'; ALTER USER '{{database.user.name}}'@'%' IDENTIFIED BY '{{database.user.password}}';"
+        - make
+        - create-user
+        - 'username={{database.user.name}}'
+        - 'password={{database.user.password}}'
+        - 'host={{database.host}}'
       drop:
         args:
-        - mysql
-        - '--host={{database.host}}'
-        - --user=root
-        - '--password={{root_password}}'
-        - "--execute=DROP USER IF EXISTS '{{database.user.name}}'@'%';"
+        - make
+        - drop-user
+        - 'username={{database.user.name}}'
+        - 'host={{database.host}}'
       grant:
         args:
-        - mysql
-        - '--host={{database.host}}'
-        - --user=root
-        - '--password={{root_password}}'
-        - "--execute=GRANT ALL PRIVILEGES ON {{database.db.name}}.* TO '{{database.user.name}}'@'%';"
+        - make
+        - grant-user-db
+        - 'username={{database.user.name}}'
+        - 'db={{database.db.name}}'
+        - 'host={{database.host}}'
       revoke:
         args:
-        - mysql
-        - '--host={{database.host}}'
-        - --user=root
-        - '--password={{root_password}}'
-        - "--execute=REVOKE ALL PRIVILEGES ON {{database.db.name}}.* FROM '{{database.user.name}}'@'%';"
+        - make
+        - revoke-user-db
+        - 'username={{database.user.name}}'
+        - 'db={{database.db.name}}'
+        - 'host={{database.host}}'
   charsets:
   - name: utf8mb4
     title: 4-Byte UTF-8 Unicode
@@ -119,20 +124,34 @@ database:
 backups:
 - name: database
   title: Default database backup
+  options:
+  - name: excluded_tables
+    title: Excluded table contents
+    description: MySQL table names or SQL LIKE patterns whose definitions are retained while their rows are omitted.
+    type: table_list
+    defaultToken: db_backup_ignore_tables
   create:
     args:
-    - mysqldump
-    - '--host={{database.host}}'
-    - --user=root
-    - '--password={{root_password}}'
-    - --single-transaction
-    - --routines
-    - --triggers
-    - '--result-file=/var/lib/mysql/backup.sql'
-    - '{{database.db.name}}'
+    - make
+    - backup
+    - 'host={{database.host}}'
+    - 'db={{database.db.name}}'
+    - 'ignore={{backup.options.excluded_tables}}'
+    - 'filepath=/var/lib/mysql/backup.sql.gz'
+  stream:
+    optionVersions:
+    - '8'
+    args:
+    - make
+    - backup-stream
+    - 'host={{database.host}}'
+    - 'db={{database.db.name}}'
+    - 'ignore={{backup.options.excluded_tables}}'
+    - 'stream_path=/var/run/wodby-backup/data'
+    - 'status_path=/var/run/wodby-backup/status'
   upload:
-    filepath: /var/lib/mysql/backup.sql
-    extension: sql
+    filepath: /var/lib/mysql/backup.sql.gz
+    extension: sql.gz
 
 tokens:
 - name: root_password
@@ -141,12 +160,19 @@ tokens:
 - name: password
   generate:
     regex: '[0-9a-z-]{32}'
+- name: db_backup_ignore_tables
+  value: ''
 
 env:
 - name: MYSQL_ROOT_PASSWORD
   value: '{{root_password}}'
 - name: MYSQL_ROOT_HOST
   value: '%'
+
+deployment:
+  strategy: rolling
+  minReady: 10s
+  shutdownGracePeriod: 30s
 
 helm:
   name: wodby
@@ -212,8 +238,17 @@ workloads:
     volumes: extraVolumes
   containers:
   - name: mysql
-    image: mysql
+    image: wodby/mysql
     helm:
       resources: resources
       env: envVars
       mounts: extraVolumeMounts
+
+configs:
+- name: config
+  title: MySQL config
+  version: '8'
+  filepath: /etc/gotpl/my.cnf.tmpl
+  default:
+    source: image
+    filepath: /etc/gotpl/my.cnf.tmpl

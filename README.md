@@ -21,7 +21,7 @@ This repository defines the Wodby service manifest and operational contract for 
 | Type | Database |
 | Versions | MySQL 8 |
 | Workloads | `main` (StatefulSet), primary, one replica |
-| Containers | `mysql` using the official `mysql` image |
+| Containers | `mysql` using the Wodby image built from the official MySQL image |
 | Endpoint | MySQL TCP 3306 |
 | Volume | Data, 10 GB by default |
 | Operations | Database and user lifecycle, import, and backup |
@@ -29,9 +29,9 @@ This repository defines the Wodby service manifest and operational contract for 
 
 ## Data operations
 
-Wodby creates application databases and users through the MySQL command-line tools included in the official image.
-Database imports use MySQL's `/docker-entrypoint-initdb.d` initialization directory. Backups use `mysqldump` and are
-uploaded as SQL files.
+Wodby creates application databases and users through the operations provided by `wodby/mysql`. Database imports accept
+SQL files and common compressed archive formats through `/wodby/import`. Backups use consistent snapshots and are
+uploaded or streamed as compressed SQL files.
 
 ## Maintain a custom version
 
