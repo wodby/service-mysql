@@ -1,6 +1,6 @@
 # MySQL service for Kubernetes on Wodby
 
-Run MySQL 8 as a reusable, persistent database service with Wodby.
+Run MySQL 8.4 LTS as a reusable, persistent database service with Wodby.
 
 This repository defines the Wodby service manifest and operational contract for MySQL.
 
@@ -19,7 +19,7 @@ This repository defines the Wodby service manifest and operational contract for 
 | --- | --- |
 | Service name | `mysql` |
 | Type | Database |
-| Versions | MySQL 8 |
+| Versions | MySQL 8.4 LTS |
 | Workloads | `main` (StatefulSet), primary, one replica |
 | Containers | `mysql` using the Wodby image built from the official MySQL image |
 | Endpoint | MySQL TCP 3306 |
