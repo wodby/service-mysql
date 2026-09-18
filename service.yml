@@ -5,8 +5,8 @@ title: MySQL
 scalable: false
 
 options:
-- version: '8'
-  tag: '8-1.0.2'
+- version: '8.4'
+  tag: '8.4-2.0.0'
   default: true
 
   eol: '2032-04-30T00:00:00+00:00'
@@ -142,7 +142,7 @@ backups:
     - 'filepath=/var/lib/mysql/backup.sql.gz'
   stream:
     optionVersions:
-    - '8'
+    - '8.4'
     args:
     - make
     - backup-stream
@@ -249,7 +249,7 @@ workloads:
 configs:
 - name: config
   title: MySQL config
-  version: '8'
+  version: '8.4'
   filepath: /etc/gotpl/my.cnf.tmpl
   default:
     source: image
