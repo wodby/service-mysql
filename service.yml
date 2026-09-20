@@ -6,9 +6,8 @@ scalable: false
 
 options:
 - version: '8.4'
-  tag: '8.4-2.0.0'
+  tag: 8.4-r0
   default: true
-
   eol: '2032-04-30T00:00:00+00:00'
 endpoints:
 - name: mysql

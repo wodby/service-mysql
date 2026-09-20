@@ -19,7 +19,7 @@ This repository defines the Wodby service manifest and operational contract for 
 | --- | --- |
 | Service name | `mysql` |
 | Type | Database |
-| Versions | MySQL 8.4 LTS |
+| Versions | `8.4` by default |
 | Workloads | `main` (StatefulSet), primary, one replica |
 | Containers | `mysql` using the Wodby image built from the official MySQL image |
 | Endpoint | MySQL TCP 3306 |
