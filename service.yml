@@ -168,6 +168,7 @@ tokens:
 env:
 - name: MYSQL_ROOT_PASSWORD
   value: '{{root_password}}'
+  secret: true
 - name: MYSQL_ROOT_HOST
   value: '%'
 
