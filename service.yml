@@ -2,6 +2,7 @@ name: mysql
 icon: mysql
 type: db
 title: MySQL
+guidance: GUIDANCE.md
 scalable: false
 
 options:
