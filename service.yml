@@ -242,6 +242,10 @@ workloads:
   containers:
   - name: mysql
     image: wodby/mysql
+    resources:
+      request:
+        cpu: 40
+        memory: 480
     helm:
       resources: resources
       env: envVars
