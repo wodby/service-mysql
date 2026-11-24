@@ -7,8 +7,8 @@ scalable: false
 
 options:
 - version: '8.4'
-  tag: 8.4-r2
-  digest: sha256:4f1fc0b465271a12cd3becf038d559fb946dfed1d57e894385cfd2ba9d126905
+  tag: 8.4-r3
+  digest: sha256:002da6c4e7d987f4f01f389b2fccd53dc507b6bf3bd2b7d363a6f0c97b617186
   default: true
   eol: '2032-04-30T00:00:00+00:00'
 endpoints:
